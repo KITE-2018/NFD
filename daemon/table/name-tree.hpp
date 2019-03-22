@@ -83,6 +83,9 @@ public: // mutation
   Entry&
   lookup(const fib::Entry& fibEntry);
 
+  Entry&
+  lookup(const tib::Entry& tibEntry);
+
   /** \brief equivalent to .lookup(pitEntry.getName()).
    *  \param pitEntry a PIT entry attached to this name tree
    *  \note This overload is more efficient than .lookup(const Name&) in common cases.

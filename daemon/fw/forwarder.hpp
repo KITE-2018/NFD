@@ -32,6 +32,7 @@
 #include "face-table.hpp"
 #include "unsolicited-data-policy.hpp"
 #include "table/fib.hpp"
+#include "table/tib.hpp"
 #include "table/pit.hpp"
 #include "table/cs.hpp"
 #include "table/measurements.hpp"
@@ -137,6 +138,12 @@ public: // forwarding entrypoints and tables
   getFib()
   {
     return m_fib;
+  }
+
+  Tib&
+  getTib()
+  {
+    return m_tib;
   }
 
   Pit&
@@ -297,6 +304,16 @@ PROTECTED_WITH_TESTS_ELSE_PRIVATE:
   }
 
 private:
+  void
+  updateTib(Face& inFace, const Data& data, const Interest& interest);
+
+  void
+  setNexthopTimeoutTimer(tib::Entry *tibEntry, const Face& face, const Interest& interest);
+
+  void
+  onTibEntryNextHopTimeout(tib::Entry *tibEntry, const Face *face);
+
+private:
   ForwarderCounters m_counters;
 
   FaceTable m_faceTable;
@@ -304,6 +321,7 @@ private:
 
   NameTree           m_nameTree;
   Fib                m_fib;
+  Tib                m_tib;
   Pit                m_pit;
   Cs                 m_cs;
   Measurements       m_measurements;
@@ -316,6 +334,18 @@ private:
 
   // allow Strategy (base class) to enter pipelines
   friend class fw::Strategy;
+
+public:
+  bool m_doPull; // re-express pending interest on new trace (new nexthop for a prefix)
+  bool m_allowTempPath; // allow forwarding according to trace Interest in-record, if enabled along with pulling, allow TI to pull pending Interests
+
+  int m_maxPullCnt;
+
+  bool m_setTraceLifetime; // set lifetime of the nexthop according to trace lifetime field in TI
+  bool m_prolongTrace; // keep trace alive on dataflow
+
+  bool m_gone;
+  bool m_removeTraceOnNack;
 };
 
 } // namespace nfd

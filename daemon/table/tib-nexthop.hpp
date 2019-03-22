@@ -23,31 +23,29 @@
  * NFD, e.g., in COPYING.md file.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NFD_DAEMON_TABLE_CLEANUP_HPP
-#define NFD_DAEMON_TABLE_CLEANUP_HPP
+#ifndef NFD_DAEMON_TABLE_TIB_NEXTHOP_HPP
+#define NFD_DAEMON_TABLE_TIB_NEXTHOP_HPP
 
-#include "name-tree.hpp"
-#include "fib.hpp"
-#include "tib.hpp"
-#include "pit.hpp"
+#include "core/common.hpp"
+#include "face/face.hpp"
+#include "core/scheduler.hpp"
+#include "fib-nexthop.hpp"
 
 namespace nfd {
+namespace tib {
 
-/** \brief cleanup tables when a face is destroyed
- *
- *  This function enumerates the NameTree, calls Fib::removeNextHop for each FIB entry,
- *  calls Pit::deleteInOutRecords for each PIT entry, and finally
- *  deletes any name tree entries that have become empty.
- *
- *  \note It's a design choice to let Fib and Pit classes decide what to do with each entry.
- *        This function is only responsible for implementing the enumeration procedure.
- *        The benefit of having this function instead of doing the enumeration in Fib and Pit
- *        classes is to perform both FIB and PIT cleanups in one pass of NameTree enumeration,
- *        so as to reduce performance overhead.
+/** \class NextHop
+ *  \brief represents a nexthop record in FIB entry
  */
-void
-cleanupOnFaceRemoval(NameTree& nt, Fib& fib, Tib& tib, Pit& pit, const Face& face);
+class NextHop : public fib::NextHop
+{
+public:
+  NextHop(Face& face);
+public:
+  scheduler::EventId m_timeoutTimer;
+};
 
+} // namespace tib
 } // namespace nfd
 
-#endif // NFD_DAEMON_TABLE_CLEANUP_HPP
+#endif // NFD_DAEMON_TABLE_TIB_NEXTHOP_HPP

@@ -43,6 +43,8 @@ NameTree::NameTree(size_t nBuckets)
 Entry&
 NameTree::lookup(const Name& name)
 {
+  // BOOST_ASSERT(name.getTlvType() == tlv::Name); // makes sense for now
+
   NFD_LOG_TRACE("lookup " << name);
 
   HashSequence hashes = computeHashes(name);
@@ -72,6 +74,20 @@ NameTree::lookup(const fib::Entry& fibEntry)
   }
 
   BOOST_ASSERT(nte->getFibEntry() == &fibEntry);
+  return *nte;
+}
+
+Entry&
+NameTree::lookup(const tib::Entry& tibEntry)
+{
+  Entry* nte = this->getEntry(tibEntry);
+  if (nte == nullptr) {
+    // special case: Tib::s_emptyEntry is unattached
+    BOOST_ASSERT(tibEntry.getPrefix().empty());
+    return this->lookup(tibEntry.getPrefix());
+  }
+
+  BOOST_ASSERT(nte->getTibEntry() == &tibEntry);
   return *nte;
 }
 
@@ -190,6 +206,9 @@ NameTree::findLongestPrefixMatch(const ENTRY& tableEntry, const EntrySelector& e
 
 template Entry*
 NameTree::findLongestPrefixMatch<fib::Entry>(const fib::Entry&, const EntrySelector&) const;
+
+template Entry*
+NameTree::findLongestPrefixMatch<tib::Entry>(const tib::Entry&, const EntrySelector&) const;
 
 template Entry*
 NameTree::findLongestPrefixMatch<measurements::Entry>(const measurements::Entry&,

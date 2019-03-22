@@ -143,5 +143,32 @@ hasPendingOutRecords(const pit::Entry& pitEntry)
                       });
 }
 
+
+bool judgeNameIsTrace(Name name)
+{
+  // assume rv prefix length is 1
+  // if (name.size() < 8) { // minimal: /prefix/trace/etc/<timestamp>/<random-value>/<SignatureInfo>/<SignatureValue>
+  if (name.size() < 4) { // minimal: /rv/trace/producer/seq
+    return false;
+  }
+  if (name[1].toUri() == "trace") {
+    return true;
+  }
+  return false;
+}
+
+shared_ptr<Name> extractDataNameFromTrace(Name name)
+{
+  shared_ptr<Name> dataName = make_shared<Name>();
+  // if (name.size() < 8) {
+  if (name.size() < 4) { // /rv/trace/alice/seq
+    return dataName;
+  }
+  dataName->append(name[0]);
+  // dataName->append(name.getSubName(2, name.size() - 7));
+  dataName->append(name.getSubName(2, name.size() - 3)); // starting from 3rd, length: minus first two and seq
+  return dataName;
+}
+
 } // namespace fw
 } // namespace nfd

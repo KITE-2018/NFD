@@ -27,6 +27,7 @@
 #define NFD_DAEMON_TABLE_NAME_TREE_ENTRY_HPP
 
 #include "table/fib-entry.hpp"
+#include "table/tib-entry.hpp"
 #include "table/pit-entry.hpp"
 #include "table/measurements-entry.hpp"
 #include "table/strategy-choice-entry.hpp"
@@ -116,6 +117,15 @@ public: // attached table entries
   void
   setFibEntry(unique_ptr<fib::Entry> fibEntry);
 
+  tib::Entry*
+  getTibEntry() const
+  {
+    return m_tibEntry.get();
+  }
+
+  void
+  setTibEntry(unique_ptr<tib::Entry> tibEntry);
+
   bool
   hasPitEntries() const
   {
@@ -171,6 +181,7 @@ private:
   std::vector<Entry*> m_children;
 
   unique_ptr<fib::Entry> m_fibEntry;
+  unique_ptr<tib::Entry> m_tibEntry;
   std::vector<shared_ptr<pit::Entry>> m_pitEntries;
   unique_ptr<measurements::Entry> m_measurementsEntry;
   unique_ptr<strategy_choice::Entry> m_strategyChoiceEntry;

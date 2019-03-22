@@ -187,5 +187,16 @@ Strategy::lookupFib(const pit::Entry& pitEntry) const
   return fibEntry0;
 }
 
+const tib::Entry&
+Strategy::lookupTib(const pit::Entry& pitEntry) const
+{
+  const Tib& tib = m_forwarder.getTib();
+
+  // TIB lookup with Interest name
+  const tib::Entry& tibEntry = tib.findLongestPrefixMatch(pitEntry);
+  NFD_LOG_TRACE("lookupTib found=" << tibEntry.getPrefix());
+  return tibEntry;
+}
+
 } // namespace fw
 } // namespace nfd

@@ -40,6 +40,7 @@ namespace pit {
  *    iterator<shared_ptr<Entry>> end()
  */
 typedef std::vector<shared_ptr<Entry>> DataMatchResult;
+typedef std::vector<shared_ptr<Entry>> PrefixMatchResult;
 
 /** \brief represents the Interest Table
  */
@@ -83,6 +84,9 @@ public:
    */
   DataMatchResult
   findAllDataMatches(const Data& data) const;
+
+  PrefixMatchResult
+  findAllMatches(const Name& prefix) const;
 
   /** \brief deletes an entry
    */

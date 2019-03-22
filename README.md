@@ -1,3 +1,12 @@
+NFD - KITE
+=============================================
+
+Customized for KITE mobility support, this branch features the latest KITE design, and can be used for ndnSIM simulations.
+Trace is now set up by verifiable Data sent by RV in response to signed Interest sent by mobile node.
+If RV receives an Interest (trace Interest) and considers it legal, e.g. with valid signature, then RV sends back Data (trace Data) for the Interest, and upon receiving such Data, routers will set up a forwarding path that leads to the mobile node.
+
+Refer to the [ACM ICN 2018 paper](http://conferences.sigcomm.org/acm-icn/2018/proceedings/icn18-final23.pdf) for more details on the design. Also check out the [presentation slides](http://conferences.sigcomm.org/acm-icn/2018/slides/slides-papers-13.pdf).
+
 NFD - Named Data Networking Forwarding Daemon
 =============================================
 

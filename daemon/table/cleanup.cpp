@@ -28,7 +28,7 @@
 namespace nfd {
 
 void
-cleanupOnFaceRemoval(NameTree& nt, Fib& fib, Pit& pit, const Face& face)
+cleanupOnFaceRemoval(NameTree& nt, Fib& fib, Tib& tib, Pit& pit, const Face& face)
 {
   std::multimap<size_t, const name_tree::Entry*> maybeEmptyNtes;
 
@@ -37,6 +37,12 @@ cleanupOnFaceRemoval(NameTree& nt, Fib& fib, Pit& pit, const Face& face)
     fib::Entry* fibEntry = nte.getFibEntry();
     if (fibEntry != nullptr) {
       fib.removeNextHop(*fibEntry, face);
+    }
+
+    tib::Entry* tibEntry = nte.getTibEntry();
+    if (tibEntry != nullptr) {
+      tibEntry->cancelNextHopTimer(face);
+      tib.removeNextHop(*tibEntry, face);
     }
 
     for (const auto& pitEntry : nte.getPitEntries()) {

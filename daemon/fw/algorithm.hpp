@@ -116,6 +116,15 @@ findDuplicateNonce(const pit::Entry& pitEntry, uint32_t nonce, const Face& face)
 bool
 hasPendingOutRecords(const pit::Entry& pitEntry);
 
+/** \brief judge if a name has the trace tag
+ *  \return true if the second component is "trace"
+ */
+bool
+judgeNameIsTrace(Name name);
+
+shared_ptr<Name>
+extractDataNameFromTrace(Name name);
+
 } // namespace fw
 } // namespace nfd
 
