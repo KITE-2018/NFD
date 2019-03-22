@@ -109,6 +109,9 @@ public: // mutation
   Entry&
   lookup(const fib::Entry& fibEntry);
 
+  Entry&
+  lookup(const tib::Entry& tibEntry);
+
   /** \brief equivalent to
    *         `lookup(pitEntry.getName(), std::min(pitEntry.getName().size(), getMaxDepth()))`
    *  \param pitEntry a PIT entry attached to this name tree

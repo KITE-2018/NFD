@@ -48,10 +48,18 @@ getDefaultStrategyName()
 Forwarder::Forwarder()
   : m_unsolicitedDataPolicy(new fw::DefaultUnsolicitedDataPolicy())
   , m_fib(m_nameTree)
+  , m_tib(m_nameTree)
   , m_pit(m_nameTree)
   , m_measurements(m_nameTree)
   , m_strategyChoice(*this)
   , m_csFace(face::makeNullFace(FaceUri("contentstore://")))
+  , m_doPull(false)
+  , m_allowTempPath(false)
+  , m_maxPullCnt(std::numeric_limits<int32_t>::max())
+  , m_setTraceLifetime(false)
+  , m_prolongTrace(false)
+  , m_gone(false)
+  , m_removeTraceOnNack(false)
 {
   getFaceTable().addReserved(m_csFace, face::FACEID_CONTENT_STORE);
 
@@ -75,7 +83,7 @@ Forwarder::Forwarder()
   });
 
   m_faceTable.beforeRemove.connect([this] (Face& face) {
-    cleanupOnFaceRemoval(m_nameTree, m_fib, m_pit, face);
+    cleanupOnFaceRemoval(m_nameTree, m_fib, m_tib, m_pit, face);
   });
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
@@ -249,6 +257,23 @@ Forwarder::onOutgoingInterest(const shared_ptr<pit::Entry>& pitEntry, Face& outF
   NFD_LOG_DEBUG("onOutgoingInterest face=" << outFace.getId() <<
                 " interest=" << pitEntry->getName());
 
+  Name prefix = Name("/rv/alice");
+  if (m_gone && prefix.isPrefixOf(pitEntry->getName())
+      && outFace.getRemoteUri().toString() == "netdev://[ff:ff:ff:ff:ff:ff]") {
+    lp::Nack nack(interest);
+    nack.setReason(lp::NackReason::NO_ROUTE);
+    for (auto inRecord = pitEntry->in_begin(); inRecord != pitEntry->in_end(); inRecord++) {
+      NFD_LOG_INFO("Send NACK to: " << inRecord->getFace().getRemoteUri() << " , for " << pitEntry->getName());
+      inRecord->getFace().sendNack(nack);
+    }
+    // tib::Entry* pEntry = m_tib.findExactMatch(Name("/rv/alice/photo"));
+    // if (pEntry) {
+    //   m_tib.removeNextHop(*pEntry, outFace);
+    // }
+    // m_gone = false;
+    return;
+  }
+
   // insert out-record
   pitEntry->insertOrUpdateOutRecord(outFace, interest);
 
@@ -309,14 +334,22 @@ Forwarder::onIncomingData(Face& inFace, const Data& data)
     return;
   }
 
+  bool isTrace = false;
+  // judge if data is returned by a certain RV for the purpose of setting up path leading to mobile node
+  if (fw::judgeNameIsTrace(data.getName())) {
+    isTrace = true;
+  }
+
   shared_ptr<Data> dataCopyWithoutTag = make_shared<Data>(data);
   dataCopyWithoutTag->removeTag<lp::HopCountTag>();
 
   // CS insert
+  if (!isTrace) { // data for trace set up purpose shouldn't be cached, RV is always stationary, data won't be needed elsewhere
   if (m_csFromNdnSim == nullptr)
     m_cs.insert(*dataCopyWithoutTag);
   else
     m_csFromNdnSim->Add(dataCopyWithoutTag);
+  }
 
   // when only one PIT entry is matched, trigger strategy: after receive Data
   if (pitMatches.size() == 1) {
@@ -326,6 +359,14 @@ Forwarder::onIncomingData(Face& inFace, const Data& data)
 
     // set PIT expiry timer to now
     this->setExpiryTimer(pitEntry, 0_ms);
+
+    // remember pending downstreams
+    for (const pit::InRecord& inRecord : pitEntry->getInRecords()) {
+      if (isTrace) {
+        // update FIB or TIB
+        this->updateTib(inRecord.getFace(), data, pitEntry->getInterest());
+      }
+    }
 
     beforeSatisfyInterest(*pitEntry, inFace, data);
     // trigger strategy: after receive Data
@@ -341,6 +382,19 @@ Forwarder::onIncomingData(Face& inFace, const Data& data)
 
     // delete PIT entry's out-record
     pitEntry->deleteOutRecord(inFace);
+
+    if (m_prolongTrace) {
+      const tib::Entry& tibEntry = m_tib.findLongestPrefixMatch(*pitEntry);
+      if (tibEntry.hasNextHops()) {
+        // the interest was forwarded according to trace
+        tib::Entry* pt = m_tib.findExactMatch(tibEntry.getPrefix());
+        BOOST_ASSERT(pt != NULL);
+        if (pt->hasNextHop(inFace))
+          pt->setNextHopTimer(inFace, scheduler::schedule(time::milliseconds(1000),
+                                                          bind(&Forwarder::onTibEntryNextHopTimeout,
+                                                               this, pt, &inFace)));
+      }
+    }
   }
   // when more than one PIT entry is matched, trigger strategy: before satisfy Interest,
   // and send Data to all matched out faces
@@ -490,9 +544,20 @@ Forwarder::onIncomingNack(Face& inFace, const lp::Nack& nack)
     this->setExpiryTimer(pitEntry, 0_ms);
   }
 
+  bool propagate = false;
+  if (m_removeTraceOnNack && nack.getReason() == lp::NackReason::NO_ROUTE) {
+    NFD_LOG_DEBUG("Removing trace entry on NACK for " << nack.getInterest().getName());
+    tib::Entry* pEntry = m_tib.findExactMatch(Name("/rv/alice/photo"));
+    if (pEntry) {
+      propagate = pEntry->hasNextHop(inFace) && (pEntry->getNextHops().size() == 1);
+      m_tib.removeNextHop(*pEntry, inFace);
+    }
+  }
+
   // trigger strategy: after receive NACK
-  this->dispatchToStrategy(*pitEntry,
-    [&] (fw::Strategy& strategy) { strategy.afterReceiveNack(inFace, nack, pitEntry); });
+  if (propagate)
+    this->dispatchToStrategy(*pitEntry,
+      [&] (fw::Strategy& strategy) { strategy.afterReceiveNack(inFace, nack, pitEntry); });
 }
 
 void
@@ -588,6 +653,84 @@ Forwarder::insertDeadNonceList(pit::Entry& pitEntry, Face* upstream)
       m_deadNonceList.add(pitEntry.getName(), outRecord->getLastNonce());
     }
   }
+}
+
+void
+Forwarder::updateTib(Face& inFace, const Data& data, const Interest& interest)
+{
+  BOOST_ASSERT(fw::judgeNameIsTrace(data.getName()));
+  NFD_LOG_INFO("forwarder: updating TIB, data=" << data.getName());
+  uint64_t seq = data.getName().at(-1).toSequenceNumber();
+  shared_ptr<Name> dataPrefix = fw::extractDataNameFromTrace(data.getName());
+  NFD_LOG_INFO("forwarder: updating TIB, name=" << *dataPrefix);
+  tib::Entry* entry = m_tib.insert(*dataPrefix).first;
+
+  if (entry->judgeAndUpdateSeq(seq)) {
+    // only add nexthop and update seq if seq is greater than current one
+    // only keep one nexthop now
+    entry->addNextHop(inFace, 1); // cost = 1, probably useless
+    this->setNexthopTimeoutTimer(entry, inFace, interest);
+    // if (inFace.getRemoteUri().getScheme() != "appFace"
+    //     && m_doPull && !m_allowTempPath) { // send matching pending Interests
+    if (m_doPull && !m_allowTempPath) { // send matching pending Interests
+      NFD_LOG_INFO("Pulling... " << *dataPrefix);
+
+      std::list<shared_ptr<pit::Entry>> pendingPulls;
+
+      int cnt = m_maxPullCnt;
+      for (auto& pitEntry : m_pit.findAllMatches(*dataPrefix)) {
+        // if not in the incoming or outcoming faces, pull
+        // a pitEntry without in-records is a satisfied, don't pull     
+        if (pitEntry->hasInRecords() && (pitEntry->getInRecord(inFace) == pitEntry->in_end())
+            && (pitEntry->getOutRecord(inFace) == pitEntry->out_end())) {
+          NFD_LOG_INFO("Pull " << pitEntry->getInterest().getName() << " towards " << inFace.getId() << " " << inFace);
+          pendingPulls.push_back(pitEntry);
+          --cnt;
+        }
+        else {
+          NFD_LOG_INFO("Don't pull " << pitEntry->getInterest().getName() << " towards " << inFace.getId() << " " << inFace);   
+        }
+        if (cnt <= 0)
+          break;
+      }
+
+      auto pPitEntry = pendingPulls.begin();
+      for (int i = 0; i < 1000 && pPitEntry != pendingPulls.end(); ++i, ++pPitEntry) {
+        auto pitEntry = *pPitEntry;
+        pit::InRecordCollection::iterator lastExpiring =
+          std::max_element(pitEntry->in_begin(), pitEntry->in_end(), &compare_InRecord_expiry);
+
+        time::steady_clock::TimePoint lastExpiry = lastExpiring->getExpiry();
+        time::nanoseconds lastExpiryFromNow = lastExpiry - time::steady_clock::now();
+        if (lastExpiryFromNow <= time::seconds::zero()) {
+          // TODO all in-records are already expired; will this happen?
+          continue;
+        }
+        shared_ptr<Interest> interest = make_shared<Interest>(pitEntry->getInterest().wireEncode());
+        interest->setInterestLifetime(time::duration_cast<::ndn::time::milliseconds>(lastExpiryFromNow));
+        scheduler::schedule(time::duration_cast<::ndn::time::nanoseconds>(time::milliseconds(i)),
+                            bind(&Face::sendInterest, &inFace, (pitEntry)->getInterest()));
+      }
+    }
+  }
+}
+
+void
+Forwarder::setNexthopTimeoutTimer(tib::Entry* tibEntry, const Face& face, const Interest& interest)
+{
+  BOOST_ASSERT(tibEntry != nullptr);
+  // the timeout timer of nexthop corresponding to face will be reset
+  // TODO: update instead of reset, prolong if necessary, otherwise do nothing
+
+  tibEntry->setNextHopTimer(face, scheduler::schedule(interest.getInterestLifetime(),
+                                                      bind(&Forwarder::onTibEntryNextHopTimeout,
+                                                           this, tibEntry, &face)));
+}
+
+void
+Forwarder::onTibEntryNextHopTimeout(tib::Entry* tibEntry, const Face* face)
+{
+  m_tib.removeNextHop(*tibEntry, *face);
 }
 
 } // namespace nfd

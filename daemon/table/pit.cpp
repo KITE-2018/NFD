@@ -99,6 +99,33 @@ Pit::findAllDataMatches(const Data& data) const
   return matches;
 }
 
+PrefixMatchResult
+Pit::findAllMatches(const Name& prefix) const
+{
+  // auto&& ntMatches = m_nameTree.partialEnumerate(prefix,
+  //   [] (const name_tree::Entry& nte) -> std::pair<bool, bool> {
+  //     if (nte.hasPitEntries())
+  //       return {true, true};
+  //     else
+  //       return {false, false};
+  //   });
+
+  PrefixMatchResult matches;
+  // for (const name_tree::Entry& nte : ntMatches) {
+  //   BOOST_ASSERT(prefix.isPrefixOf(nte.getName()));
+  //   for (const shared_ptr<Entry>& pitEntry : nte.getPitEntries()) {
+  //     matches.emplace_back(pitEntry);
+  //   }
+  // }
+
+  for (auto p = begin(); p != end(); p++) {
+    if (prefix.isPrefixOf(p->getName()))
+      matches.emplace_back(p.operator->());
+  }
+
+  return matches;
+}
+
 void
 Pit::erase(Entry* entry, bool canDeleteNte)
 {

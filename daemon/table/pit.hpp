@@ -42,6 +42,9 @@ namespace pit {
  */
 using DataMatchResult = std::vector<shared_ptr<Entry>>;
 
+typedef std::vector<shared_ptr<Entry>> DataMatchResult;
+typedef std::vector<shared_ptr<Entry>> PrefixMatchResult;
+
 /** \brief represents the Interest Table
  */
 class Pit : noncopyable
@@ -84,6 +87,9 @@ public:
    */
   DataMatchResult
   findAllDataMatches(const Data& data) const;
+
+  PrefixMatchResult
+  findAllMatches(const Name& prefix) const;
 
   /** \brief deletes an entry
    */

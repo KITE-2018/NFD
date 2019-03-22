@@ -79,6 +79,20 @@ NameTree::lookup(const fib::Entry& fibEntry)
 }
 
 Entry&
+NameTree::lookup(const tib::Entry& tibEntry)
+{
+  Entry* nte = this->getEntry(tibEntry);
+  if (nte == nullptr) {
+    // special case: Tib::s_emptyEntry is unattached
+    BOOST_ASSERT(tibEntry.getPrefix().empty());
+    return this->lookup(tibEntry.getPrefix());
+  }
+
+  BOOST_ASSERT(nte->getTibEntry() == &tibEntry);
+  return *nte;
+}
+
+Entry&
 NameTree::lookup(const pit::Entry& pitEntry)
 {
   const Name& name = pitEntry.getName();

@@ -314,6 +314,9 @@ protected: // accessors
   const fib::Entry&
   lookupFib(const pit::Entry& pitEntry) const;
 
+  const tib::Entry&
+  lookupTib(const pit::Entry& pitEntry) const;
+
   MeasurementsAccessor&
   getMeasurements()
   {
